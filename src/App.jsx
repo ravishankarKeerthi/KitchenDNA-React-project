@@ -1,0 +1,92 @@
+import React, { useMemo, useState } from 'react';
+import './styles.css';
+
+const scenarios = {
+  hotel: { label: 'Hotel kitchen', subtitle: 'Bulk meal production', icon: '🏨', demand: 500, deadline: '12:30', staff: 8, ovens: 3, prep: 75, cook: 55, pack: 40, recipe: 'Lunch meal set', ingredients: [{name:'Rice / grains', per:0.12, unit:'kg', stock:48, cost:68},{name:'Protein',per:0.16,unit:'kg',stock:58,cost:245},{name:'Vegetables',per:0.10,unit:'kg',stock:60,cost:42},{name:'Meal containers',per:1,unit:'pcs',stock:420,cost:8}] },
+  restaurant: { label: 'Restaurant', subtitle: 'Peak-hour à la carte', icon: '🍽️', demand: 180, deadline: '13:00', staff: 6, ovens: 2, prep: 50, cook: 65, pack: 20, recipe: 'Mixed menu orders', ingredients: [{name:'Protein portions',per:0.18,unit:'kg',stock:40,cost:245},{name:'Vegetables',per:0.12,unit:'kg',stock:35,cost:42},{name:'Sauce / base',per:0.05,unit:'kg',stock:12,cost:120},{name:'Packaging',per:0.25,unit:'pcs',stock:60,cost:8}] },
+  central: { label: 'Central kitchen', subtitle: 'Multi-outlet production', icon: '🏭', demand: 1200, deadline: '11:45', staff: 14, ovens: 5, prep: 120, cook: 95, pack: 110, recipe: 'Outlet meal packs', ingredients: [{name:'Rice / grains',per:0.12,unit:'kg',stock:130,cost:68},{name:'Protein',per:0.15,unit:'kg',stock:170,cost:245},{name:'Vegetables',per:0.10,unit:'kg',stock:140,cost:42},{name:'Dispatch trays',per:1,unit:'pcs',stock:1000,cost:12}] },
+  bakery: { label: 'Bakery', subtitle: 'Batch production & ovens', icon: '🥐', demand: 800, deadline: '10:30', staff: 7, ovens: 3, prep: 65, cook: 90, pack: 45, recipe: 'Bakery batch mix', ingredients: [{name:'Flour',per:0.09,unit:'kg',stock:55,cost:52},{name:'Butter / fat',per:0.025,unit:'kg',stock:16,cost:480},{name:'Sugar',per:0.025,unit:'kg',stock:22,cost:48},{name:'Packaging',per:1,unit:'pcs',stock:700,cost:3}] }
+};
+const money = n => '₹' + Math.round(n).toLocaleString('en-IN');
+const fmt = n => Math.round(n).toLocaleString('en-IN');
+const minutesLabel = n => `${Math.floor(n/60)}h ${Math.round(n%60)}m`;
+function timeMins(t){const [h,m]=t.split(':').map(Number);return h*60+m;}
+function clock(m){const h=Math.floor(m/60)%24;return `${String(h).padStart(2,'0')}:${String(Math.round(m%60)).padStart(2,'0')}`;}
+
+export default function App(){
+ const [industry,setIndustry]=useState('hotel');
+ const [demand,setDemand]=useState(scenarios.hotel.demand);
+ const [staff,setStaff]=useState(scenarios.hotel.staff);
+ const [ovens,setOvens]=useState(scenarios.hotel.ovens);
+ const [deadline,setDeadline]=useState(scenarios.hotel.deadline);
+ const [unavailable,setUnavailable]=useState(false);
+ const [compare,setCompare]=useState(false);
+ const [saved,setSaved]=useState(false);
+ const [notice,setNotice]=useState('');
+ const base=scenarios[industry];
+ const changeIndustry=id=>{setIndustry(id);setDemand(scenarios[id].demand);setStaff(scenarios[id].staff);setOvens(scenarios[id].ovens);setDeadline(scenarios[id].deadline);setUnavailable(false);setCompare(false);setSaved(false);setNotice('');};
+ const result=useMemo(()=>{
+   const batches=Math.ceil(demand/(industry==='bakery'?40:industry==='restaurant'?1:50));
+   const prepLoad=base.prep*(demand/base.demand)*(8/Math.max(1,staff));
+   const cookLoad=base.cook*(demand/base.demand)*(base.ovens/Math.max(1,ovens-(unavailable?1:0)));
+   const packLoad=base.pack*(demand/base.demand)*(8/Math.max(1,staff));
+   const stages=[{name:'Preparation',station:'Prep benches',duration:prepLoad,icon:'🥬',capacity:Math.min(100,staff*11)},{name:'Cooking / baking',station:industry==='bakery'?'Ovens':'Hot line',duration:cookLoad,icon:industry==='bakery'?'🥐':'🔥',capacity:Math.min(100,(ovens-(unavailable?1:0))*30)},{name:'Portion & pack',station:'Packing line',duration:packLoad,icon:'📦',capacity:Math.min(100,staff*10)}];
+   const finish=480+stages.reduce((s,x)=>s+x.duration,0);
+   const due=timeMins(deadline); const finishClock=clock(finish);
+   const ingredients=base.ingredients.map(i=>({...i,required:demand*i.per,shortage:Math.max(0,demand*i.per-i.stock),cost:demand*i.per*i.cost}));
+   const ingredientCost=ingredients.reduce((s,i)=>s+i.cost,0);
+   const bottleneck=stages.reduce((a,b)=>a.duration>b.duration?a:b);
+   const late=finish>due;
+   const utilization=Math.min(100,Math.round(Math.max(...stages.map(s=>s.duration))/Math.max(1,due-480)*100));
+   return {stages,finish,finishClock,late,ingredients,ingredientCost,bottleneck,utilization,shortages:ingredients.filter(i=>i.shortage>0),totalDuration:stages.reduce((s,x)=>s+x.duration,0),batches};
+ },[industry,demand,staff,ovens,deadline,unavailable,base]);
+ const baseline=useMemo(()=>{const b=scenarios[industry];return b.prep+b.cook+b.pack;},[industry]);
+ const startOver=()=>{changeIndustry('hotel');setNotice('Scenario reset to the hotel kitchen example.');};
+ const run=()=>{setNotice(result.late?'Simulation complete: deadline risk detected. Review the bottleneck and recovery options.':'Simulation complete: the current plan meets the target deadline.');};
+ return <div className="app-shell">
+  <aside className="sidebar">
+   <div className="brand"><div className="brand-mark">K<span>✳</span></div><div><strong>KitchenDNA</strong><small>OPERATIONS INTELLIGENCE</small></div></div>
+   <div className="side-caption">SIMULATION WORKSPACE</div>
+   <div className="nav-item selected"><span>◈</span> Scenario simulator <b>01</b></div>
+   <div className="nav-item"><span>▦</span> Kitchen digital twin</div>
+   <div className="nav-item"><span>◷</span> Production timeline</div>
+   <div className="nav-item"><span>⌁</span> Ingredient intelligence</div>
+   <div className="nav-item"><span>⇄</span> Scenario comparison</div>
+   <div className="sidebar-bottom"><div className="pulse"></div><div><strong>Demo environment</strong><small>Illustrative estimates · No live data</small></div></div>
+  </aside>
+  <main className="main">
+   <header className="topbar"><div><div className="crumb">Workspace <span>/</span> Intelligence simulator</div><div className="top-title">Kitchen operations simulator</div></div><div className="top-actions"><span className="demo-tag">● DEMO MODE</span><div className="avatar">KD</div></div></header>
+   <section className="content">
+    <div className="hero-row"><div><div className="eyebrow">PLAN BEFORE YOU PRODUCE</div><h1>What happens if demand changes?</h1><p>Explore operational consequences before the kitchen commits to a production plan.</p></div><div className="hero-actions"><button className="btn secondary" onClick={startOver}>Reset scenario</button><button className="btn primary" onClick={run}>▶ Run simulation</button></div></div>
+    <div className="industry-grid">{Object.entries(scenarios).map(([id,s])=><button key={id} className={`industry-card ${industry===id?'active':''}`} onClick={()=>changeIndustry(id)}><span className="industry-icon">{s.icon}</span><span><strong>{s.label}</strong><small>{s.subtitle}</small></span><span className="radio-dot">{industry===id?'✓':''}</span></button>)}</div>
+    {notice&&<div className="notice-bar"><span>✦</span>{notice}<button onClick={()=>setNotice('')}>×</button></div>}
+    <div className="section-title"><div><h2>Scenario controls</h2><p>Change the conditions and see the projected impact update.</p></div><span className="live-label"><i/> LIVE CALCULATION</span></div>
+    <div className="control-grid">
+     <div className="panel controls-panel">
+      <div className="panel-heading"><div><span className="step">01</span><h3>Demand & deadline</h3></div><span className="panel-icon">↗</span></div>
+      <div className="control-block"><div className="control-label"><label>Required {industry==='bakery'?'items':'meals / orders'}</label><strong>{fmt(demand)}</strong></div><input type="range" min={industry==='central'?200:industry==='bakery'?100:50} max={industry==='central'?2000:industry==='bakery'?1600:industry==='restaurant'?500:1000} step={industry==='central'?50:industry==='bakery'?25:10} value={demand} onChange={e=>setDemand(+e.target.value)}/><div className="range-ends"><span>Lower demand</span><span>Peak demand</span></div></div>
+      <div className="control-block"><div className="control-label"><label>Target dispatch time</label><strong>{deadline}</strong></div><input type="range" min="540" max="840" step="15" value={timeMins(deadline)} onChange={e=>setDeadline(clock(+e.target.value))}/><div className="range-ends"><span>09:00</span><span>14:00</span></div></div>
+      <div className="panel-heading capacity-heading"><div><span className="step">02</span><h3>Available resources</h3></div></div>
+      <div className="resource-row"><div className="resource-icon">👩‍🍳</div><div className="resource-info"><strong>Kitchen staff</strong><small>Preparation, cooking support & packing</small></div><div className="stepper"><button onClick={()=>setStaff(v=>Math.max(1,v-1))}>−</button><b>{staff}</b><button onClick={()=>setStaff(v=>Math.min(30,v+1))}>+</button></div></div>
+      <div className="resource-row"><div className="resource-icon">🔥</div><div className="resource-info"><strong>{industry==='bakery'?'Ovens':'Cooking stations'}</strong><small>Parallel cooking capacity</small></div><div className="stepper"><button onClick={()=>setOvens(v=>Math.max(1,v-1))}>−</button><b>{ovens}</b><button onClick={()=>setOvens(v=>Math.min(12,v+1))}>+</button></div></div>
+      <label className={`toggle-row ${unavailable?'toggle-on':''}`}><span className="toggle-switch"><i/></span><span><strong>Simulate equipment failure</strong><small>Make one cooking station unavailable</small></span><input type="checkbox" checked={unavailable} onChange={e=>setUnavailable(e.target.checked)}/></label>
+     </div>
+     <div className="panel twin-panel"><div className="panel-heading"><div><span className="step">03</span><h3>Kitchen digital twin</h3></div><span className="tiny-pill">ILLUSTRATIVE FLOW</span></div><p className="panel-desc">Projected workload across the kitchen's connected stations.</p>
+      <div className="kitchen-flow">
+       {result.stages.map((s,i)=><React.Fragment key={s.name}><div className={`station ${result.bottleneck.name===s.name?'bottleneck':''}`}><div className="station-top"><span>{s.icon}</span><span className="station-number">0{i+1}</span></div><strong>{s.name}</strong><small>{s.station}</small><div className="station-meta"><span>Est. workload</span><b>{minutesLabel(s.duration)}</b></div><div className="meter"><span style={{width:`${Math.min(100,s.duration/Math.max(1,result.totalDuration)*100*2.2)}%`}}/></div>{result.bottleneck.name===s.name&&<em>BOTTLENECK</em>}{unavailable&&i===1&&<div className="failure-flag">1 station offline</div>}</div>{i<2&&<div className="flow-arrow">→</div>}</React.Fragment>)}
+      </div>
+      <div className="twin-footer"><div><span className="legend-dot green-dot"/> Normal flow</div><div><span className="legend-dot orange-dot"/> Bottleneck detected</div><div><span className="legend-dot red-dot"/> Equipment risk</div></div>
+      <div className="bottleneck-callout"><div className="callout-icon">⚠</div><div><strong>{result.bottleneck.name} is the current constraint</strong><p>{result.bottleneck.station} carries the highest estimated workload. Consider adding capacity here or shifting work to an available station.</p></div></div>
+     </div>
+    </div>
+    <div className="section-title results-title"><div><h2>Projected consequences</h2><p>Model outputs based on the selected scenario and stated assumptions.</p></div><button className={`btn ${compare?'primary':'secondary'}`} onClick={()=>setCompare(v=>!v)}>{compare?'Hide comparison':'⇄ Compare with baseline'}</button></div>
+    <div className="metric-grid"><div className="metric-card"><div className="metric-label">Estimated completion</div><div className="metric-value">{result.finishClock}</div><div className={`metric-foot ${result.late?'red-text':'green-text'}`}>{result.late?`After ${deadline} target`:`Before ${deadline} target`}</div><div className="metric-symbol">◷</div></div><div className="metric-card"><div className="metric-label">Ingredient requirement cost</div><div className="metric-value">{money(result.ingredientCost)}</div><div className="metric-foot">Estimated from sample recipe rates</div><div className="metric-symbol">₹</div></div><div className="metric-card"><div className="metric-label">Stock shortage alerts</div><div className={`metric-value ${result.shortages.length?'red-text':''}`}>{result.shortages.length}</div><div className="metric-foot">{result.shortages.length?'Items need replenishment':'No shortage in sample stock'}</div><div className="metric-symbol">⌁</div></div><div className="metric-card"><div className="metric-label">Capacity pressure</div><div className="metric-value">{result.utilization}%</div><div className="capacity-bar"><span style={{width:`${result.utilization}%`}}/></div><div className="metric-foot">Planning load against available time</div><div className="metric-symbol">▥</div></div></div>
+    {compare&&<div className="comparison-panel"><div><span className="eyebrow">SCENARIO COMPARISON</span><h3>Current plan vs. baseline</h3><p>Baseline uses this industry's sample demand, staff and equipment assumptions. It is an illustrative comparison, not measured kitchen performance.</p></div><div className="compare-numbers"><div><small>Baseline workload</small><strong>{minutesLabel(baseline)}</strong></div><div><small>Current workload</small><strong>{minutesLabel(result.totalDuration)}</strong></div><div><small>Change</small><strong className={result.totalDuration>baseline?'red-text':'green-text'}>{result.totalDuration>=baseline?'+':''}{minutesLabel(result.totalDuration-baseline)}</strong></div></div></div>}
+    <div className="lower-grid"><div className="panel"><div className="panel-heading"><div><span className="step">04</span><h3>Ingredient intelligence</h3></div><span className="tiny-pill">SAMPLE BOM</span></div><p className="panel-desc">Demand-scaled ingredient requirements compared with example stock levels.</p><div className="table-wrap"><table><thead><tr><th>Ingredient</th><th>Required</th><th>Stock</th><th>Availability</th><th>Est. cost</th></tr></thead><tbody>{result.ingredients.map(i=><tr key={i.name}><td><strong>{i.name}</strong></td><td>{fmt(i.required)} {i.unit}</td><td>{fmt(i.stock)} {i.unit}</td><td><span className={`status ${i.shortage>0?'status-red':'status-green'}`}>{i.shortage>0?`Short ${fmt(i.shortage)}`:'Available'}</span></td><td>{money(i.cost)}</td></tr>)}</tbody></table></div><div className="footnote">Sample stock and cost assumptions are for demonstration only. Replace with verified operational data before making purchasing decisions.</div></div>
+     <div className="panel"><div className="panel-heading"><div><span className="step">05</span><h3>Recommended actions</h3></div><span className="tiny-pill">RULE-BASED</span></div><p className="panel-desc">Suggested next steps based on this scenario's calculated risks.</p><div className="action-list">{result.late&&<div className="action-item"><span className="action-num red-bg">1</span><div><strong>Protect the deadline</strong><p>Prioritize the bottleneck stage and consider a later dispatch target or reduced batch size.</p></div></div>}{result.shortages.length>0&&<div className="action-item"><span className="action-num orange-bg">{result.late?'2':'1'}</span><div><strong>Resolve ingredient shortages</strong><p>Review {result.shortages.map(x=>x.name).join(', ')} before confirming the production plan.</p></div></div>}<div className="action-item"><span className="action-num green-bg">{(result.late?1:0)+(result.shortages.length?1:0)+1}</span><div><strong>{unavailable?'Review backup equipment':'Test a resource alternative'}</strong><p>{unavailable?'One cooking station is excluded from the capacity estimate. Test a backup station or revise the plan.':`Try ${staff+1} staff or one additional ${industry==='bakery'?'oven':'cooking station'} and compare the projected completion time.`}</p></div></div></div><button className="btn full-btn" onClick={()=>{setStaff(v=>Math.min(30,v+1));setNotice('Test applied: added one staff member. Review the updated projected consequences.');window.scrollTo({top:0,behavior:'smooth'});}}>＋ Test adding one staff member</button></div></div>
+    <div className="disclaimer"><span>ⓘ</span><div><strong>Prototype assumptions</strong><p>This simulator uses transparent illustrative formulas, sample ingredient rates and simplified workload estimates. It is not yet a validated finite-capacity scheduler and does not model recipe-specific dependency chains, breaks, cooling, travel time, inter-batch pipelining or real-time staff availability. Use it for concept exploration, not live production commitments.</p></div></div>
+    <footer><div className="brand-mini">KitchenDNA <span>· Kitchen Operations Intelligence Simulator</span></div><span>Interactive prototype · Local demo state</span></footer>
+   </section>
+  </main>
+ </div>
+}
